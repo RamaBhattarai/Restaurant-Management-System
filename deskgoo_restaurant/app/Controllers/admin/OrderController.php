@@ -6,6 +6,7 @@ use CodeIgniter\RESTful\ResourceController;
 use App\Models\OrderModel;
 use App\Models\OrderItemModel;
 use App\Models\MenuItemModel;
+use App\Models\CategoryModel;
 
 class OrderController extends ResourceController
 {
@@ -118,14 +119,18 @@ class OrderController extends ResourceController
     public function addItems($order_id = null)
     {
         if (!$order_id) {
-            return $this->fail('Order ID is required');
+            return $this->fail('Order ID is required')
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
         }
 
         $data = $this->request->getJSON(true);
         log_message('info', 'Add items request data: ' . json_encode($data));
 
         if (!isset($data['items']) || !is_array($data['items'])) {
-            return $this->fail('Items array is required');
+            return $this->fail('Items array is required')
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
         }
 
         try {
@@ -135,7 +140,9 @@ class OrderController extends ResourceController
                 
                 // Validate required fields
                 if (!isset($item['menu_item_id']) || !isset($item['unit_price']) || !isset($item['total_price'])) {
-                    return $this->fail('Missing required fields: menu_item_id, unit_price, total_price');
+                    return $this->fail('Missing required fields: menu_item_id, unit_price, total_price')
+                        ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                        ->setHeader('Access-Control-Allow-Credentials', 'true');
                 }
                 
                 $orderItemData = [
@@ -152,17 +159,23 @@ class OrderController extends ResourceController
                 $orderItemId = $this->orderItemModel->insert($orderItemData);
                 if (!$orderItemId) {
                     log_message('error', 'Failed to insert order item: ' . json_encode($orderItemData));
-                    return $this->failServerError('Failed to insert order item');
+                    return $this->failServerError('Failed to insert order item')
+                        ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                        ->setHeader('Access-Control-Allow-Credentials', 'true');
                 }
                 
                 $addedItems[] = $this->orderItemModel->find($orderItemId);
             }
 
-            return $this->respondCreated($addedItems);
+            return $this->respondCreated($addedItems)
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
 
         } catch (\Exception $e) {
             log_message('error', 'Error adding items to order: ' . $e->getMessage());
-            return $this->failServerError('Internal server error: ' . $e->getMessage());
+            return $this->failServerError('Internal server error: ' . $e->getMessage())
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
         }
     }
 
@@ -170,51 +183,88 @@ class OrderController extends ResourceController
     public function updateOrderItem($order_id, $item_id)
     {
         $data = $this->request->getJSON(true);
-        
-        if (!isset($data['quantity']) || !is_numeric($data['quantity'])) {
-            return $this->fail('Valid quantity is required');
-        }
-
-        $quantity = (int) $data['quantity'];
-        
-        if ($quantity <= 0) {
-            return $this->fail('Quantity must be greater than 0. Use delete endpoint to remove items.');
-        }
+        log_message('info', 'Update order item request data: ' . json_encode($data));
 
         try {
-            // Get the order item first
+            // Get the existing order item first
             $orderItem = $this->orderItemModel->where(['order_id' => $order_id, 'id' => $item_id])->first();
-            
+
             if (!$orderItem) {
-                return $this->failNotFound('Order item not found');
+                return $this->failNotFound('Order item not found')
+                    ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                    ->setHeader('Access-Control-Allow-Credentials', 'true');
             }
 
-            // Calculate new total
-            $newTotal = $quantity * $orderItem['unit_price'];
-            
-            // Update the order item
-            $updateData = [
-                'quantity' => $quantity,
-                'total_price' => $newTotal
-            ];
-            
-            if (isset($data['notes'])) {
-                $updateData['notes'] = $data['notes'];
+            // Check if this is a complete item replacement or just quantity/notes update
+            if (isset($data['menu_item_id'])) {
+                // Complete item replacement - validate all required fields
+                if (!isset($data['quantity']) || !isset($data['unit_price']) || !isset($data['total_price'])) {
+                    return $this->fail('For item replacement, menu_item_id, quantity, unit_price, and total_price are required')
+                        ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                        ->setHeader('Access-Control-Allow-Credentials', 'true');
+                }
+
+                $updateData = [
+                    'menu_item_id' => $data['menu_item_id'],
+                    'quantity' => $data['quantity'],
+                    'unit_price' => $data['unit_price'],
+                    'total_price' => $data['total_price'],
+                    'notes' => $data['notes'] ?? null
+                ];
+
+                log_message('info', 'Performing complete item replacement: ' . json_encode($updateData));
+            } else {
+                // Quantity/notes update only
+                if (!isset($data['quantity']) || !is_numeric($data['quantity'])) {
+                    return $this->fail('Valid quantity is required')
+                        ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                        ->setHeader('Access-Control-Allow-Credentials', 'true');
+                }
+
+                $quantity = (int) $data['quantity'];
+
+                if ($quantity <= 0) {
+                    return $this->fail('Quantity must be greater than 0. Use delete endpoint to remove items.')
+                        ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                        ->setHeader('Access-Control-Allow-Credentials', 'true');
+                }
+
+                // Calculate new total based on existing unit price
+                $newTotal = $quantity * $orderItem['unit_price'];
+
+                $updateData = [
+                    'quantity' => $quantity,
+                    'total_price' => $newTotal
+                ];
+
+                if (isset($data['notes'])) {
+                    $updateData['notes'] = $data['notes'];
+                }
+
+                log_message('info', 'Performing quantity/notes update: ' . json_encode($updateData));
             }
 
             $success = $this->orderItemModel->update($item_id, $updateData);
-            
+
             if (!$success) {
-                return $this->failServerError('Failed to update order item');
+                return $this->failServerError('Failed to update order item')
+                    ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                    ->setHeader('Access-Control-Allow-Credentials', 'true');
             }
 
             // Return updated item
             $updatedItem = $this->orderItemModel->find($item_id);
-            return $this->respond($updatedItem);
+            log_message('info', 'Order item updated successfully: ' . json_encode($updatedItem));
+            
+            return $this->respond($updatedItem)
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
 
         } catch (\Exception $e) {
             log_message('error', 'Error updating order item: ' . $e->getMessage());
-            return $this->failServerError('Internal server error: ' . $e->getMessage());
+            return $this->failServerError('Internal server error: ' . $e->getMessage())
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
         }
     }
 
@@ -224,21 +274,25 @@ class OrderController extends ResourceController
         try {
             // Verify the item belongs to this order
             $orderItem = $this->orderItemModel->where(['order_id' => $order_id, 'id' => $item_id])->first();
-            
+
             if (!$orderItem) {
-                return $this->failNotFound('Order item not found');
+                return $this->failNotFound('Order item not found')
+                    ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                    ->setHeader('Access-Control-Allow-Credentials', 'true');
             }
 
             // Delete the order item
             $success = $this->orderItemModel->delete($item_id);
-            
+
             if (!$success) {
-                return $this->failServerError('Failed to remove order item');
+                return $this->failServerError('Failed to remove order item')
+                    ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                    ->setHeader('Access-Control-Allow-Credentials', 'true');
             }
 
             // Check if order has any remaining items
             $remainingItems = $this->orderItemModel->where('order_id', $order_id)->countAllResults();
-            
+
             if ($remainingItems == 0) {
                 // No items left in order, delete the order and free the table
                 $order = $this->orderModel->find($order_id);
@@ -246,17 +300,19 @@ class OrderController extends ResourceController
                     // Free the table
                     $tableModel = new \App\Models\TableModel();
                     $tableModel->update($order['table_id'], ['status' => 'available']);
-                    
+
                     // Delete the empty order
                     $this->orderModel->delete($order_id);
-                    
+
                     log_message('info', "Order $order_id deleted - no items remaining. Table {$order['table_id']} freed.");
-                    
+
                     return $this->respondDeleted([
                         'message' => 'Order item removed successfully. Order deleted as no items remain.',
                         'order_deleted' => true,
                         'table_freed' => true
-                    ]);
+                    ])
+                    ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                    ->setHeader('Access-Control-Allow-Credentials', 'true');
                 }
             }
 
@@ -264,24 +320,29 @@ class OrderController extends ResourceController
                 'message' => 'Order item removed successfully',
                 'order_deleted' => false,
                 'remaining_items' => $remainingItems
-            ]);
+            ])
+            ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+            ->setHeader('Access-Control-Allow-Credentials', 'true');
 
         } catch (\Exception $e) {
             log_message('error', 'Error removing order item: ' . $e->getMessage());
-            return $this->failServerError('Internal server error: ' . $e->getMessage());
+            return $this->failServerError('Internal server error: ' . $e->getMessage())
+                ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
+                ->setHeader('Access-Control-Allow-Credentials', 'true');
         }
-    }
-
-    // Handle OPTIONS requests for CORS preflight
+    }    // Handle OPTIONS requests for CORS preflight
     public function options(...$params)
     {
         // This method handles all OPTIONS requests for CORS preflight
-        return $this->response
+        $response = $this->response
             ->setHeader('Access-Control-Allow-Origin', 'http://localhost:3000')
             ->setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-            ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With')
+            ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
             ->setHeader('Access-Control-Allow-Credentials', 'true')
+            ->setHeader('Access-Control-Max-Age', '7200')
             ->setStatusCode(200);
+
+        return $response;
     }
 
     // Get order with items
@@ -374,6 +435,63 @@ class OrderController extends ResourceController
         }
     }
 
+    // Get orders for sales report with date and order type filtering
+    public function getSalesReportOrders()
+    {
+        try {
+            $startDate = $this->request->getGet('start_date');
+            $endDate = $this->request->getGet('end_date');
+            $orderType = $this->request->getGet('order_type');
+
+            // Build query
+            $query = $this->orderModel->orderBy('created_at', 'DESC');
+
+            // Apply date filters if provided
+            if ($startDate) {
+                $query->where('DATE(created_at) >=', $startDate);
+            }
+            if ($endDate) {
+                $query->where('DATE(created_at) <=', $endDate);
+            }
+
+            // Apply order type filter if provided
+            if ($orderType && $orderType !== '') {
+                $query->where('order_type', $orderType);
+            }
+
+            $orders = $query->findAll();
+
+            // Enhance orders with item details for summary calculations
+            foreach ($orders as &$order) {
+                $orderItemModel = new \App\Models\OrderItemModel();
+                $items = $orderItemModel->getOrderItemsWithMenuDetails($order['id']);
+                $order['items'] = $items;
+                $order['item_count'] = count($items);
+            }
+
+            // Get total menu items and categories count for summary
+            $menuItemModel = new \App\Models\MenuItemModel();
+            $totalMenuItems = $menuItemModel->countAll();
+            
+            $categoryModel = new \App\Models\CategoryModel();
+            $totalCategories = $categoryModel->countAll();
+
+            log_message('info', 'Fetched ' . count($orders) . ' orders for sales report with filters: start_date=' . $startDate . ', end_date=' . $endDate . ', order_type=' . $orderType);
+
+            return $this->respond([
+                'orders' => $orders,
+                'summary' => [
+                    'total_menu_items' => $totalMenuItems,
+                    'total_categories' => $totalCategories
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'Error fetching sales report orders: ' . $e->getMessage());
+            return $this->failServerError('Internal server error: ' . $e->getMessage());
+        }
+    }
+
     // Update order status
     public function updateStatus($order_id)
     {
@@ -453,6 +571,48 @@ class OrderController extends ResourceController
                 $updateData['payment_method'] = $data['payment_method'];
             }
 
+            // Update discount data if provided
+            if (isset($data['discount'])) {
+                $updateData['discount_amount'] = $data['discount'];
+            }
+            if (isset($data['discount_type'])) {
+                $updateData['discount_type'] = $data['discount_type'];
+            }
+            if (isset($data['discount_amount'])) {
+                $updateData['discount_amount'] = $data['discount_amount'];
+            }
+
+            // Update VAT data if provided
+            if (isset($data['vat'])) {
+                $updateData['vat_amount'] = $data['vat'];
+            }
+            if (isset($data['vat_percentage'])) {
+                $updateData['vat_percentage'] = $data['vat_percentage'];
+            }
+
+            // Save customer invoice data if provided
+            if (isset($data['customer_invoice_data'])) {
+                $updateData['customer_invoice_data'] = $data['customer_invoice_data'];
+                $updateData['invoice_generated_at'] = date('Y-m-d H:i:s');
+            }
+
+            // Handle partial payment breakdown for "others" payment method
+            if (isset($data['payment_method']) && $data['payment_method'] === 'others') {
+                // Save individual payment amounts
+                if (isset($data['cash_amount'])) {
+                    $updateData['cash_amount'] = $data['cash_amount'];
+                }
+                if (isset($data['card_amount'])) {
+                    $updateData['card_amount'] = $data['card_amount'];
+                }
+                if (isset($data['online_amount'])) {
+                    $updateData['online_amount'] = $data['online_amount'];
+                }
+                if (isset($data['payment_breakdown'])) {
+                    $updateData['payment_breakdown'] = $data['payment_breakdown'];
+                }
+            }
+
             // Update the order status to completed
             $updateResult = $this->orderModel->update($order_id, $updateData);
             
@@ -490,10 +650,291 @@ class OrderController extends ResourceController
         }
     }
 
+    // Print saved customer invoice
+    public function printCustomerInvoice($order_id)
+    {
+        try {
+            // Get the order with saved invoice data
+            $order = $this->orderModel->getOrderWithItems($order_id);
+            
+            if (!$order) {
+                return $this->failNotFound('Order not found');
+            }
+
+            // Check if we have saved invoice data
+            if (!empty($order['customer_invoice_data'])) {
+                // Return saved invoice
+                return $this->respond([
+                    'success' => true,
+                    'invoice_html' => $order['customer_invoice_data'],
+                    'generated_at' => $order['invoice_generated_at'],
+                    'order_id' => $order_id
+                ]);
+            }
+
+            // For older orders without saved invoice data, generate it on-the-fly
+            if ($order['status'] !== 'completed') {
+                return $this->fail('Invoice not available for pending orders. Complete checkout first.');
+            }
+
+            // Get company settings
+            $companySettingsModel = new \App\Models\CompanySettingsModel();
+            $companySettings = $companySettingsModel->first();
+            $companyName = $companySettings['company_name'] ?? 'Deskgoo Consulting';
+
+            // Generate invoice HTML
+            $invoiceHtml = $this->generateCustomerInvoiceHTML($order, $companyName);
+
+            return $this->respond([
+                'success' => true,
+                'invoice_html' => $invoiceHtml,
+                'generated_at' => date('Y-m-d H:i:s'),
+                'order_id' => $order_id,
+                'note' => 'Generated on-the-fly for older order'
+            ]);
+
+        } catch (\Exception $e) {
+            log_message('error', 'Error retrieving customer invoice: ' . $e->getMessage());
+            return $this->failServerError('Internal server error: ' . $e->getMessage());
+        }
+    }
+
+    // Generate customer invoice HTML for older orders
+    private function generateCustomerInvoiceHTML($order, $companyName)
+    {
+        $orderDate = date('d M Y', strtotime($order['created_at']));
+        
+        // Determine context label
+        $contextLabel = '';
+        if ($order['order_type'] === 'takeaway') {
+            $contextLabel = $order['takeaway_number'] ?? "Takeaway {$order['takeaway_id']}";
+        } else {
+            $contextLabel = $order['table_label'] ?? "Table {$order['table_id']}";
+        }
+
+        // Determine payment method display
+        $paymentDisplay = ucfirst($order['payment_method'] ?? 'cash');
+        if ($order['payment_method'] === 'others' && !empty($order['payment_breakdown'])) {
+            $breakdown = json_decode($order['payment_breakdown'], true);
+            if ($breakdown && isset($breakdown['type'])) {
+                $paymentDisplay = ucfirst(str_replace('-', ' + ', $breakdown['type']));
+                
+                // Add amounts breakdown
+                $amountDetails = [];
+                if (!empty($order['cash_amount'])) {
+                    $amountDetails[] = "Cash: " . number_format($order['cash_amount'], 2);
+                }
+                if (!empty($order['card_amount'])) {
+                    $amountDetails[] = "Card: " . number_format($order['card_amount'], 2);
+                }
+                if (!empty($order['online_amount'])) {
+                    $amountDetails[] = "Online: " . number_format($order['online_amount'], 2);
+                }
+                
+                if (!empty($amountDetails)) {
+                    $paymentDisplay .= " (" . implode(', ', $amountDetails) . ")";
+                }
+            }
+        }
+
+        // Calculate totals
+        $subtotal = floatval($order['total_amount']);
+        $discount = floatval($order['discount_amount'] ?? 0);
+        $vat = floatval($order['vat_amount'] ?? 0);
+        $total = $subtotal - $discount + $vat;
+
+        $html = "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Customer Invoice - Order #{$order['id']}</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    font-size: 12px; 
+                    margin: 0; 
+                    padding: 20px; 
+                    max-width: 300px;
+                    margin: 0 auto;
+                    line-height: 1.4;
+                }
+                .header { 
+                    text-align: center; 
+                    border-bottom: 2px solid #000; 
+                    padding-bottom: 10px; 
+                    margin-bottom: 15px; 
+                }
+                .company-name { 
+                    font-size: 16px; 
+                    font-weight: bold; 
+                    margin-bottom: 5px; 
+                }
+                .invoice-title {
+                    font-size: 14px;
+                    font-weight: bold;
+                    margin-bottom: 5px;
+                }
+                .order-info { 
+                    margin-bottom: 15px; 
+                    font-size: 11px;
+                }
+                .info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 3px;
+                }
+                .items-table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin-bottom: 15px;
+                    font-size: 11px;
+                }
+                .items-table th, .items-table td { 
+                    padding: 4px 2px; 
+                    text-align: left; 
+                    border-bottom: 1px solid #ddd;
+                }
+                .items-table th { 
+                    background-color: #f0f0f0; 
+                    font-weight: bold;
+                    font-size: 10px;
+                }
+                .qty-col { width: 30px; text-align: center; }
+                .price-col { width: 60px; text-align: right; }
+                .total-section { 
+                    border-top: 2px solid #000; 
+                    padding-top: 10px; 
+                    margin-top: 15px;
+                    font-size: 11px;
+                }
+                .total-line { 
+                    display: flex; 
+                    justify-content: space-between; 
+                    margin-bottom: 3px;
+                }
+                .grand-total { 
+                    font-weight: bold; 
+                    font-size: 13px;
+                    border-top: 1px solid #000;
+                    padding-top: 5px;
+                    margin-top: 5px;
+                }
+                .footer { 
+                    text-align: center; 
+                    margin-top: 20px; 
+                    border-top: 1px solid #000; 
+                    padding-top: 10px; 
+                    font-size: 11px;
+                }
+                @media print {
+                    body { margin: 0; padding: 10px; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class='header'>
+                <div class='company-name'>{$companyName}</div>
+                <div class='invoice-title'>CUSTOMER INVOICE</div>
+            </div>
+
+            <div class='order-info'>
+                <div class='info-row'>
+                    <span><strong>Invoice No:</strong></span>
+                    <span>INV-{$order['id']}</span>
+                </div>
+                <div class='info-row'>
+                    <span><strong>" . ($order['order_type'] === 'takeaway' ? 'Takeaway:' : 'Table:') . "</strong></span>
+                    <span>{$contextLabel}</span>
+                </div>
+                <div class='info-row'>
+                    <span><strong>Date:</strong></span>
+                    <span>{$orderDate}</span>
+                </div>
+                <div class='info-row'>
+                    <span><strong>Payment:</strong></span>
+                    <span>{$paymentDisplay}</span>
+                </div>
+            </div>
+
+            <table class='items-table'>
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th class='qty-col'>Qty</th>
+                        <th class='price-col'>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>";
+
+        // Add items
+        if (!empty($order['items'])) {
+            foreach ($order['items'] as $item) {
+                $itemName = $item['menu_item_name'] ?? $item['name'] ?? 'Unknown Item';
+                $quantity = $item['quantity'] ?? 1;
+                $itemTotal = floatval($item['total_price'] ?? $item['total'] ?? 0);
+                
+                $html .= "
+                    <tr>
+                        <td>{$itemName}</td>
+                        <td class='qty-col'>{$quantity}</td>
+                        <td class='price-col'>" . number_format($itemTotal, 2) . "</td>
+                    </tr>";
+            }
+        } else {
+            $html .= "
+                    <tr>
+                        <td colspan='3' style='text-align: center;'>No items found</td>
+                    </tr>";
+        }
+
+        $html .= "
+                </tbody>
+            </table>
+
+            <div class='total-section'>
+                <div class='total-line'>
+                    <span>Subtotal:</span>
+                    <span>NRS " . number_format($subtotal, 2) . "</span>
+                </div>";
+
+        if ($discount > 0) {
+            $html .= "
+                <div class='total-line'>
+                    <span>Discount:</span>
+                    <span>- NRS " . number_format($discount, 2) . "</span>
+                </div>";
+        }
+
+        if ($vat > 0) {
+            $html .= "
+                <div class='total-line'>
+                    <span>VAT (13%):</span>
+                    <span>NRS " . number_format($vat, 2) . "</span>
+                </div>";
+        }
+
+        $html .= "
+                <div class='total-line grand-total'>
+                    <span>Total:</span>
+                    <span>NRS " . number_format($total, 2) . "</span>
+                </div>
+            </div>
+
+            <div class='footer'>
+                <p><strong>Thank you! Visit Again Soon!</strong></p>
+                <p>* Customer Copy *</p>
+            </div>
+        </body>
+        </html>";
+
+        return $html;
+    }
+
     // Day-end report
     public function dayReport()
     {
         $date = $this->request->getGet('date');
+        $orderType = $this->request->getGet('order_type');
         
         if (!$date) {
             $date = date('Y-m-d'); // Default to today
@@ -506,58 +947,89 @@ class OrderController extends ResourceController
 
             $db = \Config\Database::connect();
             
-            // Get orders for the specific date
+            // Build WHERE clause for order type filtering
+            $whereClause = "DATE(created_at) = ?";
+            $params = [$reportDate];
+            
+            if ($orderType && $orderType !== 'all') {
+                $whereClause .= " AND order_type = ?";
+                $params[] = $orderType;
+            }
+            
+            // Get orders for the specific date and order type
             $query = $db->query("
                 SELECT 
                     SUM(CASE WHEN status != ? THEN 1 ELSE 0 END) as total_orders,
                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed_orders,
                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as cancelled_orders,
                     SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END) as pending_orders,
-                    SUM(CASE WHEN status = ? THEN total_amount ELSE 0 END) as total_sales
+                    SUM(CASE WHEN status = ? THEN (total_amount - COALESCE(discount_amount, 0) + COALESCE(vat_amount, 0)) ELSE 0 END) as total_sales
                 FROM orders 
-                WHERE DATE(created_at) = ?
-            ", [
+                WHERE {$whereClause}
+            ", array_merge([
                 'cancelled',  // total_orders (exclude cancelled)
                 'completed',  // completed_orders
                 'cancelled',  // cancelled_orders  
                 'completed',  // for pending calculation
                 'cancelled',  // for pending calculation
-                'completed',  // total_sales
-                $reportDate
-            ]);
+                'completed'   // total_sales
+            ], $params));
 
             $result = $query->getRow();
 
             // Get payment method breakdown for completed orders
+            $paymentWhereClause = $whereClause . " AND status = ?";
+            $paymentParams = array_merge($params, ['completed']);
+            
+            // Get basic payment method breakdown
             $paymentQuery = $db->query("
                 SELECT 
                     COALESCE(payment_method, 'cash') as payment_method,
-                    SUM(total_amount) as amount
+                    SUM(total_amount - COALESCE(discount_amount, 0) + COALESCE(vat_amount, 0)) as amount,
+                    SUM(COALESCE(cash_amount, 0)) as cash_amount,
+                    SUM(COALESCE(card_amount, 0)) as card_amount,
+                    SUM(COALESCE(online_amount, 0)) as online_amount
                 FROM orders 
-                WHERE DATE(created_at) = ? AND status = ?
+                WHERE {$paymentWhereClause}
                 GROUP BY payment_method
-            ", [
-                $reportDate,
-                'completed'  // Use 'completed' for finished orders
-            ]);
+            ", $paymentParams);
 
             $paymentBreakdown = [];
             $paymentResults = $paymentQuery->getResult();
             
             // Initialize all payment methods with 0
             $paymentBreakdown['cash'] = 0;
-            $paymentBreakdown['fonepay'] = 0;
             $paymentBreakdown['card'] = 0;
-            $paymentBreakdown['others'] = 0;
+            $paymentBreakdown['online'] = 0;
             
-            // Fill with actual data
+            // Process each payment method result
             foreach ($paymentResults as $payment) {
-                $paymentBreakdown[$payment->payment_method] = (float)$payment->amount;
+                if ($payment->payment_method === 'others') {
+                    // Distribute partial payments to their respective categories
+                    $paymentBreakdown['cash'] += (float)$payment->cash_amount;
+                    $paymentBreakdown['card'] += (float)$payment->card_amount;
+                    $paymentBreakdown['online'] += (float)$payment->online_amount;
+                } elseif (in_array($payment->payment_method, ['cash', 'card', 'online'])) {
+                    // Add direct payments to their categories
+                    $paymentBreakdown[$payment->payment_method] += (float)$payment->amount;
+                } elseif ($payment->payment_method === 'fonepay') {
+                    // Handle legacy fonepay as online
+                    $paymentBreakdown['online'] += (float)$payment->amount;
+                }
             }
+
+            // Remove the separate partial payment query since we're now distributing properly
+            // No need for partial_payment_breakdown anymore
+
+            // Log the payment queries for debugging
+            log_message('info', 'Payment query executed: ' . $db->getLastQuery());
+            log_message('info', 'Payment results: ' . json_encode($paymentResults));
+            log_message('info', 'Final payment breakdown: ' . json_encode($paymentBreakdown));
 
             return $this->respond([
                 'success' => true,
                 'date' => $reportDate,
+                'order_type' => $orderType ?? 'all',
                 'total_orders' => (int)$result->total_orders,
                 'completed_orders' => (int)$result->completed_orders,
                 'cancelled_orders' => (int)$result->cancelled_orders,

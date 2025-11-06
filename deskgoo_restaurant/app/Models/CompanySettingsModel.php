@@ -12,6 +12,7 @@ class CompanySettingsModel extends Model
         'company_name',
         'company_logo', 
         'vat_number',
+        'pan_number',
         'phone',
         'email',
         'address',
@@ -38,6 +39,7 @@ class CompanySettingsModel extends Model
             $defaultSettings = [
                 'company_name' => 'Deskgoo Restaurant',
                 'vat_number' => '',
+                'pan_number' => '',
                 'phone' => '',
                 'email' => '',
                 'address' => '',

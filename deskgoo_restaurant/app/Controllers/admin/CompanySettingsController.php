@@ -48,6 +48,7 @@ class CompanySettingsController extends ResourceController
                 'email' => 'permit_empty|valid_email',
                 'phone' => 'permit_empty|max_length[20]',
                 'vat_number' => 'permit_empty|max_length[50]',
+                'pan_number' => 'permit_empty|max_length[50]',
                 'website' => 'permit_empty|valid_url_strict',
             ]);
 

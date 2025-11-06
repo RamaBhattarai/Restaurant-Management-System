@@ -252,16 +252,9 @@ class TakeawayController extends BaseController
                     o.*,
                     t.takeaway_number,
                     t.status as takeaway_status,
-                    t.deleted_at as takeaway_deleted_at,
-                    GROUP_CONCAT(
-                        CONCAT(oi.quantity, 'x ', COALESCE(mi.name, 'Unknown Item'), 
-                               CASE WHEN oi.notes IS NOT NULL AND oi.notes != '' THEN CONCAT(' (', oi.notes, ')') ELSE '' END)
-                        SEPARATOR '; '
-                    ) as order_items
+                    t.deleted_at as takeaway_deleted_at
                 FROM orders o
                 LEFT JOIN takeaways t ON o.takeaway_id = t.id
-                LEFT JOIN order_items oi ON o.id = oi.order_id
-                LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
                 WHERE o.takeaway_id IS NOT NULL 
                 AND t.deleted_at IS NULL";
             
@@ -273,7 +266,7 @@ class TakeawayController extends BaseController
                 $params[] = $date;
             }
             
-            $sql .= " GROUP BY o.id ORDER BY o.created_at DESC";
+            $sql .= " ORDER BY o.created_at DESC";
             
             log_message('info', 'Executing takeaway orders query: ' . $sql);
             log_message('info', 'Query parameters: ' . json_encode($params));
@@ -286,35 +279,12 @@ class TakeawayController extends BaseController
                 log_message('info', 'Sample order: ' . json_encode($orders[0]));
             }
             
-            // Process the concatenated items into proper array format
-            $processedOrders = array_map(function($order) {
-                $order['items'] = [];
-                if ($order['order_items']) {
-                    $items = explode('; ', $order['order_items']);
-                    foreach ($items as $item) {
-                        // Parse "2x Chicken Burger (Extra spicy)" format
-                        if (preg_match('/(\d+)x (.+)/', $item, $matches)) {
-                            $quantity = $matches[1];
-                            $itemDetails = $matches[2];
-                            
-                            // Check if there are notes in parentheses
-                            if (preg_match('/(.+) \((.+)\)/', $itemDetails, $noteMatches)) {
-                                $name = $noteMatches[1];
-                                $notes = $noteMatches[2];
-                            } else {
-                                $name = $itemDetails;
-                                $notes = null;
-                            }
-                            
-                            $order['items'][] = [
-                                'quantity' => (int)$quantity,
-                                'menu_item_name' => $name,
-                                'notes' => $notes
-                            ];
-                        }
-                    }
-                }
-                unset($order['order_items']);
+            // Get order items with proper price information for each order
+            $orderItemModel = new \App\Models\OrderItemModel();
+            $processedOrders = array_map(function($order) use ($orderItemModel) {
+                // Get order items with menu item details and pricing
+                $items = $orderItemModel->getOrderItemsWithMenuDetails($order['id']);
+                $order['items'] = $items;
                 return $order;
             }, $orders);
             

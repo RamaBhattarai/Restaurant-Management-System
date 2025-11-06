@@ -59,7 +59,9 @@ class MenuController extends BaseController
             'price' => $data['price'],
             'category' => !empty(trim($data['category'] ?? '')) ? trim($data['category']) : 'food',
             'image' => $data['image'] ?? null,
-            'is_active' => $data['is_active'] ?? 1
+            'is_active' => $data['is_active'] ?? 1,
+            'print_kot' => $data['print_kot'] ?? 1,
+            'print_bot' => $data['print_bot'] ?? 0
         ]);
 
         $item = $this->model->find($id);
@@ -85,7 +87,9 @@ class MenuController extends BaseController
             'price' => $data['price'] ?? null,
             'category' => !empty(trim($data['category'] ?? '')) ? trim($data['category']) : null,
             'image' => $data['image'] ?? null,
-            'is_active' => $data['is_active'] ?? 1
+            'is_active' => $data['is_active'] ?? 1,
+            'print_kot' => $data['print_kot'] ?? 1,
+            'print_bot' => $data['print_bot'] ?? 0
         ]);
 
         $item = $this->model->find($id);

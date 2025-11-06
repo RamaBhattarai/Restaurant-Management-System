@@ -46,27 +46,18 @@ $routes->get('uploads/(:any)', function($filename) {
     }
 });
 
-// Route to serve company logo images
-$routes->get('uploads/company-logos/(:any)', function($filename) {
-    $path = WRITEPATH . 'uploads/company-logos/' . $filename;
-    if (file_exists($path)) {
-        $mimeType = mime_content_type($path);
-        header('Content-Type: ' . $mimeType);
-        readfile($path);
-        exit;
-    } else {
-        throw new \CodeIgniter\Exceptions\PageNotFoundException();
-    }
-});
-
 $routes->group('admin', function($routes){
-   // Authentication routes
+    // General upload route for file uploads
+    $routes->options('upload', 'Admin\MenuController::uploadImage');
+    $routes->post('upload', 'Admin\MenuController::uploadImage');
+
+    // Authentication routes
     $routes->options('auth/login', 'Admin\AuthController::login');
     $routes->options('auth/logout', 'Admin\AuthController::logout');
     $routes->options('auth/verify', 'Admin\AuthController::verify');
     $routes->options('auth/forgot-password', 'Admin\AuthController::forgotPassword');
     $routes->options('auth/change-password', 'Admin\AuthController::changePassword');
-    
+
     $routes->post('auth/login', 'Admin\AuthController::login');
     $routes->post('auth/logout', 'Admin\AuthController::logout');
     $routes->get('auth/verify', 'Admin\AuthController::verify');
@@ -82,23 +73,21 @@ $routes->group('admin', function($routes){
     $routes->options('menu-items', 'Admin\MenuController::create');
     $routes->options('menu-items/(:num)', 'Admin\MenuController::update/$1');
     $routes->options('menu-items/upload-image', 'Admin\MenuController::uploadImage');
-    $routes->options('orders', 'Admin\OrderController::index');
+    $routes->options('orders', 'Admin\OrderController::getSalesReportOrders');
     $routes->options('orders/(:num)', 'Admin\OrderController::getOrder/$1');
     $routes->options('orders/(:num)/items', 'Admin\OrderController::addItems/$1');
     $routes->options('orders/(:num)/items/(:num)', 'Admin\OrderController::options/$1/$2'); // For PUT and DELETE operations
-    $routes->options('orders/(:num)/items/(:num)', 'Admin\OrderController::updateOrderItem/$1/$2'); // Add OPTIONS for PUT
-    $routes->options('orders/(:num)/items/(:num)', 'Admin\OrderController::removeOrderItem/$1/$2'); // Add OPTIONS for DELETE
-    $routes->options('orders/(:num)/items/(:num)', 'Admin\OrderController::updateOrderItem/$1/$2');
     $routes->options('orders/(:num)/status', 'Admin\OrderController::updateStatus/$1');
     $routes->options('orders/(:num)/payment-method', 'Admin\OrderController::updatePaymentMethod/$1');
     $routes->options('orders/(:num)/checkout', 'Admin\OrderController::checkout/$1');
+    $routes->options('orders/(:num)/print-invoice', 'Admin\OrderController::printCustomerInvoice/$1');
     $routes->options('orders/day-report', 'Admin\OrderController::dayReport');
     $routes->options('profile/(:num)', 'Admin\ProfileController::show/$1');
     $routes->options('profile/(:num)/upload-picture', 'Admin\ProfileController::uploadPicture/$1');
     $routes->options('profile/(:num)/delete-picture', 'Admin\ProfileController::deletePicture/$1');
     $routes->options('customers', 'Admin\CustomerController::index');
     $routes->options('customers/(:num)', 'Admin\CustomerController::show/$1');
-    
+
     $routes->get('areas', 'Admin\AreaController::index');
     $routes->post('areas', 'Admin\AreaController::create');
     $routes->put('areas/(:num)', 'Admin\AreaController::update/$1');
@@ -126,8 +115,9 @@ $routes->group('admin', function($routes){
     $routes->delete('categories/(:num)', 'Admin\CategoryController::delete/$1');
 
     // Orders
-    $routes->get('orders', 'Admin\OrderController::index');                    // Get all orders (order history)
-    $routes->get('orders/all', 'Admin\OrderController::getAllOrders');         // Get all orders (both dine-in and takeaway) for POS
+    $routes->get('orders', 'Admin\OrderController::getSalesReportOrders');    // Get orders for sales report with filtering
+    $routes->get('orders/all', 'Admin\OrderController::index');               // Get all orders (order history)
+    $routes->get('orders/pos', 'Admin\OrderController::getAllOrders');        // Get all orders (both dine-in and takeaway) for POS
     $routes->post('orders', 'Admin\OrderController::createOrder');             // Create new order (Place order from POS)
     $routes->get('orders/(:num)', 'Admin\OrderController::getOrder/$1');       // Get specific order with items
     $routes->post('orders/(:num)/items', 'Admin\OrderController::addItems/$1'); // Add items to existing order
@@ -136,6 +126,7 @@ $routes->group('admin', function($routes){
     $routes->put('orders/(:num)/status', 'Admin\OrderController::updateStatus/$1'); // Update order status
     $routes->put('orders/(:num)/payment-method', 'Admin\OrderController::updatePaymentMethod/$1'); // Update payment method
     $routes->post('orders/(:num)/checkout', 'Admin\OrderController::checkout/$1'); // Complete checkout and free table
+    $routes->get('orders/(:num)/print-invoice', 'Admin\OrderController::printCustomerInvoice/$1'); // Print saved customer invoice
     $routes->get('orders/day-report', 'Admin\OrderController::dayReport');      // Get day-end report
 
     // Profile Management
@@ -157,13 +148,13 @@ $routes->group('admin', function($routes){
     $routes->options('takeaways/(:num)', 'Admin\TakeawayController::show/$1');
     $routes->options('takeaways/(:num)/complete', 'Admin\TakeawayController::complete/$1');
     $routes->options('takeaways/(:num)', 'Admin\TakeawayController::delete/$1');
-    
+
     $routes->get('takeaways', 'Admin\TakeawayController::index');
     $routes->post('takeaways', 'Admin\TakeawayController::store');
     $routes->get('takeaways/(:num)', 'Admin\TakeawayController::show/$1');
     $routes->put('takeaways/(:num)/complete', 'Admin\TakeawayController::complete/$1');
     $routes->delete('takeaways/(:num)', 'Admin\TakeawayController::delete/$1');
-    
+
     // Takeaway Orders (for management)
     $routes->options('takeaway-orders', 'Admin\TakeawayController::getTakeawayOrders');
     $routes->get('takeaway-orders', 'Admin\TakeawayController::getTakeawayOrders');
@@ -173,22 +164,28 @@ $routes->group('admin', function($routes){
     $routes->options('table-transfer/order/(:num)', 'Admin\TableTransferController::getOrderByTable/$1');
     $routes->options('table-transfer/available-tables', 'Admin\TableTransferController::getAvailableTables');
     $routes->options('table-transfer/transfer', 'Admin\TableTransferController::transferOrder');
-    
+    $routes->options('table-transfer/merge', 'Admin\TableTransferController::mergeOrders');
+    $routes->options('table-transfer/reprint-ticket/(:num)', 'Admin\TableTransferController::reprintTicket/$1');
+
     $routes->get('table-transfer/active-orders', 'Admin\TableTransferController::getActiveOrders');
     $routes->get('table-transfer/order/(:num)', 'Admin\TableTransferController::getOrderByTable/$1');
     $routes->get('table-transfer/available-tables', 'Admin\TableTransferController::getAvailableTables');
     $routes->post('table-transfer/transfer', 'Admin\TableTransferController::transferOrder');
+    $routes->post('table-transfer/merge', 'Admin\TableTransferController::mergeOrders');
+    $routes->post('table-transfer/reprint-ticket/(:num)', 'Admin\TableTransferController::reprintTicket/$1');
 
     // Reports
     $routes->options('reports/item-sales', 'Admin\ReportController::itemSales');
     $routes->get('reports/item-sales', 'Admin\ReportController::itemSales');
+    $routes->options('reports/item-wise-sales', 'Admin\ReportController::itemWiseSales');
+    $routes->get('reports/item-wise-sales', 'Admin\ReportController::itemWiseSales');
 
     // Company Settings
     $routes->options('company-settings', 'Admin\CompanySettingsController::index');
     $routes->options('company-settings/(:num)', 'Admin\CompanySettingsController::update/$1');
     $routes->options('company-settings/upload-logo', 'Admin\CompanySettingsController::uploadLogo');
     $routes->options('company-settings/delete-logo', 'Admin\CompanySettingsController::deleteLogo');
-    
+
     $routes->get('company-settings', 'Admin\CompanySettingsController::index');
     $routes->put('company-settings/(:num)', 'Admin\CompanySettingsController::update/$1');
     $routes->put('company-settings', 'Admin\CompanySettingsController::update'); // For single settings record

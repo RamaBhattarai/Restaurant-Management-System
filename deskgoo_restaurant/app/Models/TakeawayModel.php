@@ -129,7 +129,13 @@ class TakeawayModel extends Model
                 COUNT(o.id) as order_count,
                 COUNT(CASE WHEN o.status NOT IN ('completed', 'cancelled') THEN 1 END) as active_order_count,
                 COUNT(CASE WHEN o.status = 'completed' THEN 1 END) as completed_order_count,
-                COALESCE(SUM(o.total_amount), 0) as total_amount
+                COALESCE(SUM(
+                    CASE WHEN o.status = 'completed' THEN 
+                        (o.total_amount - COALESCE(o.discount_amount, 0) + COALESCE(o.vat_amount, 0))
+                    ELSE 
+                        o.total_amount 
+                    END
+                ), 0) as total_amount
             FROM takeaways t
             LEFT JOIN orders o ON t.id = o.takeaway_id
             WHERE t.status = 'active' AND t.deleted_at IS NULL";
